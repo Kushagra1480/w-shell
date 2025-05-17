@@ -5,15 +5,16 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
+	"sort"
+)
+var (
+    lastTabPrefix string
+    lastCandidates []string
+    isTabPressed bool
 )
 
-type shellCompleter struct{
-	lastTabPrefix string
-    isFirstTab   bool
-	lastCandidates []string
-}
+type shellCompleter struct{}
 
 func (c *shellCompleter) Do(line []rune, pos int) (newLine [][]rune, length int) {
     lineStr := string(line[:pos])
@@ -24,35 +25,43 @@ func (c *shellCompleter) Do(line []rune, pos int) (newLine [][]rune, length int)
         prefix = words[len(words)-1] 
     }
 
-    if len(words) == 0 || (len(words) == 1 && !strings.HasSuffix(lineStr, " ")) {
-		if prefix != c.lastTabPrefix {
-			c.lastTabPrefix = prefix
-			c.isFirstTab = true
-			c.lastCandidates = getMatchingCommands(prefix)
+	prefix = strings.Map(func(r rune) rune {
+		if r < 32 { 
+			return -1 
 		}
-        candidates := c.lastCandidates
-		sort.Strings(candidates)
-
-        if len(candidates) > 1 {
-			if c.isFirstTab {
-				c.isFirstTab = false
-				return [][]rune{[]rune("\a")}, 0
-			} else {
-				c.isFirstTab = true
-				fmt.Print("\n")
-				fmt.Print(strings.Join(candidates, "  "))
-				fmt.Print("\n")
-				return [][]rune{[]rune(prefix)}, len(prefix)
-			}
-		}
-
-        if len(candidates) == 1 {
-            return [][]rune{[]rune(candidates[0][len(prefix):] + " ")}, len(prefix)
-        }
+		return r
+	}, prefix)
+     
+    lastTabPrefix = strings.TrimSpace(lastTabPrefix)
+    currentPrefix := strings.TrimSpace(prefix)
+    cond1 := lastTabPrefix == currentPrefix
+    cond2 := len(lastCandidates) > 1
+    cond3 := isTabPressed
+    
+    if cond1 && cond2 && cond3 {
+        sort.Strings(lastCandidates)
+		fmt.Print("\n")
+        fmt.Print(strings.Join(lastCandidates, "  "))
+        fmt.Print("\n")
+        isTabPressed = false
+        return [][]rune{[]rune("")}, 0
+    }
+    
+    lastTabPrefix = prefix
+    if !isTabPressed || len(lastCandidates) == 0 {
+        lastCandidates = getMatchingCommands(prefix)
+    }
+    
+    if len(lastCandidates) > 1 {
+        isTabPressed = true
+        return [][]rune{[]rune("\a")}, 0
+    } else if len(lastCandidates) == 1 {
+        isTabPressed = false
+    	completion := lastCandidates[0][len(prefix):] + " "
+    	return [][]rune{[]rune(completion)}, len(prefix)
     }
 
     wordCount := len(words)
-
     if wordCount == 0 || (wordCount == 1 && !strings.HasSuffix(lineStr, " ")) {
         return completeCommand(words)
     } else {
